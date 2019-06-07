@@ -1,0 +1,328 @@
+---
+title: "Logistic Regression & Cross Validation"
+author: "Crista Moreno"
+output: html_notebook
+---
+
+## Description 
+
+*A Dive Into Logistic Regression Modeling* and how to prevent the harms of overfitting with
+
+k-fold cross validation.
+
+## Load required R Packages
+
+```{r warning=FALSE, message=FALSE, echo = FALSE}
+# ipak function: install and load multiple R packages. (stevenworthington/ipak.R)
+# check to see if packages are installed. Install them if they are not, then load them into the R session.
+ipak <- function(pkg){
+    new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+    if (length(new.pkg)) 
+        install.packages(new.pkg, dependencies = TRUE)
+    sapply(pkg, require, character.only = TRUE)
+}
+required_packages <- c('magrittr','plyr','dplyr','ggplot2',
+                       'scales','tidyr','corrplot','caret', 'rgl', 'knitr')
+ipak(required_packages)
+```
+
+```{r warning = FALSE, message= FALSE, echo = FALSE}
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(scales) # extra plotting features
+library(tidyr)
+library(corrplot) # correlation plots
+library(caret) # k-fold cross validation
+library(rgl) # 3d plots R graphics Library
+library(knitr)
+```
+
+### Source Custom Functions
+
+```{r warning = FALSE, message = FALSE, include = FALSE}
+# source("./src/load_libraries.R")
+source("./src/plot_functions.R")
+source("./src/functions.R")
+```
+
+```{r setup, echo = FALSE}
+knit_hooks$set(webgl = hook_webgl)
+```
+
+### Fisher's (Anderson's) Iris Data Set
+
+![test](./serveimage.jpeg)
+
+
+```{r}
+data(iris)
+```
+
+```{r echo = FALSE}
+data <- iris
+data
+```
+
+### Set up data for Binary Classification
+
+```{r}
+data %<>% 
+  filter(!(Species == "setosa"))
+
+data %<>% 
+  mutate(virginica = case_when(Species == "virginica" ~ 1, 
+                               Species != "virginica" ~ 0) 
+  )
+
+data$virginica <- as.factor(data$virginica)
+
+data %<>% 
+  mutate(y_virginica = as.numeric(as.character(virginica)))
+```
+
+```{r echo = FALSE}
+data %<>% 
+  mutate(color = case_when(Species == "versicolor"  ~ "darkorchid",
+                           Species == "virginica" ~ "#e08795"))
+```
+
+### Correlation Matrix
+
+$$\text{Cor}(X, Y) = \dfrac{\sum_{i = 1}^{n} (x_{i} - \bar{x})(y_{i} - \bar{y})}{\sqrt{\sum_{i = 1}^{n}(x_{i} - \bar{x})^{2}} \sqrt{\sum_{i =1}^{n}(y_{i} - \bar{y})^{2}}}$$
+
+$$Cor(x, y)= \dfrac{\left<x^{*}, y^{*}\right>}{||x^{*}|| \cdot ||y^{*}||},  
+      \small
+      \qquad x^{*} = x - \bar{x}, \qquad y^{*} = y - \bar{y}$$
+
+```{r echo = FALSE}
+temp <- data %>%
+  select(Sepal.Length, Sepal.Width, 
+         Petal.Length, Petal.Width)
+```
+
+```{r echo = FALSE, include = TRUE}
+M <- cor(temp)
+M
+```
+
+```{r echo = FALSE}
+col3 <- colorRampPalette(c("deeppink", "white", "blue")) 
+
+corrplot(M, order = "hclust", 
+         addrect = 2, 
+         col = col3(20), 
+         tl.col = "black", 
+         tl.srt = 50, 
+         cl.cex = 1,
+         tl.cex = 1.4, 
+         cl.ratio = 0.3, 
+         cl.length = 11, 
+         outline = TRUE)
+```
+
+### Logistic Regression Model
+
+$$\mathcal{P}(Y = k | X = x)$$
+
+$$p(X) = \dfrac{e^{\beta_{0} + \beta_{1}X_{1} +  \beta_{2}X_{2} + \beta_{3}X_{3} + \beta_{4}X_{4}}}{1 + e^{\beta_{0} + \beta_{1}X_{1} +  \beta_{2}X_{2} + \beta_{3}X_{3} + \beta_{4}X_{4}}}$$
+
+### Model Variables
+
+$$X_{1} \text{ - Sepal.Width}, \qquad X_{2} \text{ - Petal.Lenth} \qquad X_{3} \text{ - Sepal.Length} \qquad X_{4} \text{ - Petal.Width}$$
+
+```{r}
+log_model <- glm(virginica ~ Sepal.Width + Petal.Length + Sepal.Length + Petal.Width,
+                data = data,
+                family = "binomial")
+```
+
+### Model Coefficients
+
+$$\beta_{0} \qquad \beta_{1} \qquad \beta_{2} \qquad \beta_{3} \qquad \beta_{4}$$
+
+```{r}
+log_model$coefficients
+summary(log_model)
+```
+
+
+`Petal.Length` appears to be the most statistically significant variable in the model.
+
+### k-fold Cross Validation for `Petal.Length`
+
+#### Model Variables
+
+$$X_{1} \text{ - Petal.Length}$$
+
+```{r warning = FALSE, message = FALSE}
+train_control <- trainControl(method = "cv",
+                              number = 5,
+                              savePredictions = TRUE)
+
+model_fit_petal <- train(virginica ~ Petal.Length,  
+                   data = data, 
+                   method="glm", 
+                   family="binomial",
+                   trControl = train_control, 
+                   tuneLength = 5)
+```
+
+### Training Sets
+
+```{r}
+model_fit_petal$control$index
+```
+
+### Validation Sets
+
+```{r}
+model_fit_petal$control$indexOut
+```
+
+### Accuracy for each Fold
+
+```{r}
+model_fit_petal$resample
+```
+
+### Model Coefficients
+
+$$\beta_{0} \qquad \beta_{1}$$
+```{r}
+model_fit_petal$finalModel$coefficients
+```
+
+```{r}
+# model_fit_petal$results
+# summary(model_fit_petal)
+# print(model_fit_petal)
+```
+
+
+$$p(X) = \dfrac{e^{\beta_{0} + \beta_{1}X}}{1 + e^{\beta_{0} + \beta_{1}X}}$$
+
+```{r warning = FALSE, message = FALSE}
+plot_logistic_model_2(model_fit_petal, data, 
+                      Petal.Length, y_virginica, 0.5, 
+                      data$Petal.Length, 
+                      Species, 
+                      "Logistic Regression Petal.Length")
+```
+
+### k-fold Cross Validation for `Petal.Length` + `Sepal.Width` 
+
+#### Model Variables 
+
+$$X_{1} \text{ - Petal.Length}, \qquad X_{2} \text{ - Sepal.Width}$$
+
+
+```{r warning = FALSE, message = FALSE}
+train_control <- trainControl(method = "cv",
+                              number = 5,
+                              savePredictions = TRUE)
+
+model_fit <- train(virginica ~ Petal.Length + Sepal.Width,  
+                   data = data, 
+                   method="glm", 
+                   family="binomial",
+                   trControl = train_control, 
+                   tuneLength = 5)
+```
+
+### Training Sets 
+
+```{r}
+model_fit$control$index
+```
+
+### Validation Sets
+
+```{r}
+model_fit$control$indexOut
+```
+
+### Accuracy for each fold of Cross Validation
+
+```{r}
+model_fit$resample
+```
+
+```{r}
+# str(model_fit)
+# summary(model_fit)
+# print(model_fit)
+```
+
+
+### Model Coefficients
+
+$$\beta_{0} \qquad \beta_{1} \qquad \beta_{2}$$
+```{r echo = FALSE}
+model_fit$finalModel$coefficients
+```
+
+
+```{r}
+# predictions = predict(model_fit, 
+#                       newdata = data)
+# 
+# confusionMatrix(data = as.factor(predictions),
+#                 data$virginica,
+#                 positive = "1")
+```
+
+
+### 3D Plot of Logistic Regression Model for `Petal.Length` and `Sepal.Width`
+
+```{r echo = FALSE}
+petal_length_sepal_width <- with(data,
+                     plot3d(z = logistic_model(data$Petal.Length,
+                                               data$Sepal.Width),
+                            x = Petal.Length,
+                            y = Sepal.Width,
+                            type = "s",
+                            col= as.character(data$color), 
+                            # xlab = "Variable 1", 
+                            # ylab = "Variable2", 
+                            zlab = "Probability"))
+
+rglwidget(elementId = "petal_length_sepal_width")
+```
+
+$$p(X) = \dfrac{e^{\beta_{0} + \beta_{1}X_{1} + \beta_{2}X_{2}}}{1 + e^{\beta_{0} + \beta_{1}X_{1} + \beta_{2}X_{2}}}$$
+
+
+```{r echo = FALSE}
+grid <- data.frame(Petal.Length = seq(range(data$Petal.Length)[1],
+                                  range(data$Petal.Length)[2], len = 100), 
+                   
+                   Sepal.Width = seq(range(data$Sepal.Width)[1],
+                                   range(data$Sepal.Width)[2], len = 100))
+
+grid$predictions <- predict(model_fit, 
+                            newdata = grid)
+
+grid <- grid[order(grid$Petal.Length, 
+                   grid$Sepal.Width),]
+
+x1 <- unique(grid$Petal.Length)
+x2 <- unique(grid$Sepal.Width) 
+
+z <- outer(x1, x2, function(x1, x2) exp(model_fit$finalModel$coefficients[1] +
+                                          model_fit$finalModel$coefficients[2] * x1 + 
+                                          model_fit$finalModel$coefficients[3] * x2) / 
+             (exp(model_fit$finalModel$coefficients[1] +
+                    model_fit$finalModel$coefficients[2] * x1 + 
+                    model_fit$finalModel$coefficients[3] * x2) + 1))
+
+maxColorValue <- 100
+palette <- colorRampPalette(c("cyan","pink", "deeppink"))(maxColorValue)
+
+surface_model_petal_length_sepal_width <- surface3d(x1, x2, z,
+                                     color = palette[cut(z, maxColorValue)],
+                                     alpha=0.8)
+
+rglwidget(elementId = "surface_model_petal_length_sepal_width")
+```
